@@ -6,6 +6,10 @@ const mysql = require('mysql2/promise');
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'Public')));
+// Explicit fallback route to serve index.html on the root URL
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'Public', 'index.html'));
+});
 
 // ---------- MySQL connection pool ----------
 const pool = mysql.createPool({
