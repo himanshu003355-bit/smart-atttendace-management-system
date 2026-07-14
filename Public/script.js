@@ -1,54 +1,29 @@
 /* ==========================================================
    Smart Attendance Register — client-side logic
-   Data model: each student stores `marks`, keyed first by date,
-   then by lecture number (1-8) -> "present" | "absent".
-   e.g. student.marks["2026-07-14"][3] = "present"
-   Totals and % are always derived from this object, so nothing
-   gets double-counted even if you revisit a date.
+   Data now lives in a shared MySQL database via the /api/*
+   endpoints in server.js, instead of this browser's localStorage.
+   After every action we re-fetch the full state from the server
+   so everyone viewing the page sees the same data.
+   Data model (unchanged): each student stores `marks`, keyed
+   first by date, then by lecture number (1-8) -> "present" | "absent".
    ========================================================== */
 
-const STORAGE_KEY = 'attendance_students_v2'; // v2: lecture-wise data model
-const CANCELLED_KEY = 'attendance_cancelled_v1'; // date -> array of cancelled lecture numbers
 const DEFAULTER_THRESHOLD = 75;
 const LECTURES_PER_DAY = 8;
 
 let students = [];
 let cancelledByDate = {};
 
-// ---------- persistence ----------
-function loadStudents() {
+// ---------- server sync ----------
+async function fetchState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    students = raw ? JSON.parse(raw) : [];
+    const res = await fetch('/api/state');
+    if (!res.ok) throw new Error('Bad response from server');
+    const data = await res.json();
+    students = data.students || [];
+    cancelledByDate = data.cancelled || {};
   } catch (e) {
-    console.error('Could not read saved attendance data:', e);
-    students = [];
-  }
-}
-
-function saveStudents() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
-  } catch (e) {
-    console.error('Could not save attendance data:', e);
-  }
-}
-
-function loadCancelled() {
-  try {
-    const raw = localStorage.getItem(CANCELLED_KEY);
-    cancelledByDate = raw ? JSON.parse(raw) : {};
-  } catch (e) {
-    console.error('Could not read cancelled-lecture data:', e);
-    cancelledByDate = {};
-  }
-}
-
-function saveCancelled() {
-  try {
-    localStorage.setItem(CANCELLED_KEY, JSON.stringify(cancelledByDate));
-  } catch (e) {
-    console.error('Could not save cancelled-lecture data:', e);
+    console.error('Could not load attendance data from server:', e);
   }
 }
 
@@ -57,25 +32,13 @@ function isCancelled(date, lecture) {
 }
 
 // Toggle a lecture cancelled/not-cancelled for the whole class on this date.
-// Cancelling also clears any marks already made for that lecture, so it
-// never counts towards anyone's total (mirrors the C++ version's behaviour).
-function toggleCancelled(date, lecture) {
-  if (!cancelledByDate[date]) cancelledByDate[date] = [];
-  const idx = cancelledByDate[date].indexOf(lecture);
-
-  if (idx === -1) {
-    cancelledByDate[date].push(lecture);
-    students.forEach(s => {
-      if (s.marks[date]) {
-        delete s.marks[date][lecture];
-        if (Object.keys(s.marks[date]).length === 0) delete s.marks[date];
-      }
-    });
-    saveStudents();
-  } else {
-    cancelledByDate[date].splice(idx, 1);
-  }
-  saveCancelled();
+async function toggleCancelled(date, lecture) {
+  await fetch('/api/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, lecture })
+  });
+  await fetchState();
   render();
 }
 
@@ -112,50 +75,52 @@ function todayISO() {
 }
 
 // ---------- actions ----------
-function addStudent(roll, name) {
-  if (students.some(s => s.roll === roll)) {
+async function addStudent(roll, name) {
+  const res = await fetch('/api/students', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roll, name })
+  });
+  if (res.status === 409) {
     alert('A student with this roll number is already on the register.');
     return false;
   }
-  students.push({ roll, name, marks: {} });
-  saveStudents();
+  if (!res.ok) {
+    alert('Could not add student. Please try again.');
+    return false;
+  }
+  await fetchState();
   return true;
 }
 
-function deleteStudent(roll) {
-  students = students.filter(s => s.roll !== roll);
-  saveStudents();
+async function deleteStudent(roll) {
+  await fetch(`/api/students/${encodeURIComponent(roll)}`, { method: 'DELETE' });
+  await fetchState();
   render();
 }
 
 // Cycle a single lecture slot: unmarked -> present -> absent -> unmarked
-function cycleLecture(roll, lecture) {
+async function cycleLecture(roll, lecture) {
   const date = selectedDate();
   if (isCancelled(date, lecture)) return; // cancelled lectures can't be marked
 
-  const student = students.find(s => s.roll === roll);
-  if (!student) return;
-
-  if (!student.marks[date]) student.marks[date] = {};
-  const current = student.marks[date][lecture];
-
-  if (current === undefined) {
-    student.marks[date][lecture] = 'present';
-  } else if (current === 'present') {
-    student.marks[date][lecture] = 'absent';
-  } else {
-    delete student.marks[date][lecture];
-    if (Object.keys(student.marks[date]).length === 0) delete student.marks[date];
-  }
-
-  saveStudents();
+  await fetch('/api/mark', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roll, date, lecture })
+  });
+  await fetchState();
   render();
 }
 
-function resetToday() {
+async function resetToday() {
   const date = selectedDate();
-  students.forEach(s => delete s.marks[date]);
-  saveStudents();
+  await fetch('/api/reset-today', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date })
+  });
+  await fetchState();
   render();
 }
 
@@ -188,7 +153,6 @@ function renderStats() {
   const date = selectedDate();
   const total = students.length;
 
-  // Flatten every lecture-mark recorded for the selected date, across all students
   let markedToday = 0;
   let presentToday = 0;
   students.forEach(s => {
@@ -296,7 +260,6 @@ function drawChart() {
   const barGap = 10;
   const barW = Math.max(14, (w - padding - 10) / sorted.length - barGap);
 
-  // threshold guide line at 75%
   const thresholdY = padding + chartH * (1 - DEFAULTER_THRESHOLD / 100);
   ctx.strokeStyle = 'rgba(226,112,90,0.6)';
   ctx.setLineDash([4, 4]);
@@ -333,10 +296,7 @@ function escapeHtml(str) {
 }
 
 // ---------- wire up events ----------
-document.addEventListener('DOMContentLoaded', () => {
-  loadStudents();
-  loadCancelled();
-
+document.addEventListener('DOMContentLoaded', async () => {
   const dateInput = document.getElementById('attendance-date');
   dateInput.value = todayISO();
 
@@ -344,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
 
-  document.getElementById('add-form').addEventListener('submit', e => {
+  document.getElementById('add-form').addEventListener('submit', async e => {
     e.preventDefault();
     const rollInput = document.getElementById('input-roll');
     const nameInput = document.getElementById('input-name');
@@ -352,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const name = nameInput.value.trim();
     if (!roll || !name) return;
 
-    if (addStudent(roll, name)) {
+    if (await addStudent(roll, name)) {
       rollInput.value = '';
       nameInput.value = '';
       render();
@@ -374,5 +334,6 @@ document.addEventListener('DOMContentLoaded', () => {
   dateInput.addEventListener('change', render);
   document.getElementById('reset-today').addEventListener('click', resetToday);
 
+  await fetchState();
   render();
 });
