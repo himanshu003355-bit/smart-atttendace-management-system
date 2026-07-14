@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Attendance Register</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="chalk-dust" aria-hidden="true"></div>
+
+<header class="board-header">
+  <div class="header-inner">
+    <div class="title-block">
+      <p class="eyebrow">CSE &middot; First Year Project</p>
+      <h1>Smart Attendance Register</h1>
+      <p class="subtitle">Mark the roll call, lecture by lecture &mdash; chalk keeps the count.</p>
+    </div>
+    <div class="date-chip" id="today-chip"></div>
+  </div>
+</header>
+
+<main class="board">
+
+  <!-- Stats row -->
+  <section class="stats-row" aria-label="Class summary">
+    <div class="stat-card">
+      <span class="stat-number" id="stat-total">0</span>
+      <span class="stat-label">students on roll</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-number" id="stat-present">&ndash;</span>
+      <span class="stat-label">today's attendance</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-number" id="stat-avg">0%</span>
+      <span class="stat-label">class average</span>
+    </div>
+    <div class="stat-card stat-card--warn">
+      <span class="stat-number" id="stat-defaulters">0</span>
+      <span class="stat-label">below 75%</span>
+    </div>
+  </section>
+
+  <div class="board-grid">
+
+    <!-- Left column: add student + ledger -->
+    <section class="panel ledger-panel">
+      <div class="panel-head">
+        <h2>Roll call ledger</h2>
+        <form id="add-form" class="add-form">
+          <input type="text" id="input-roll" placeholder="Roll no." inputmode="numeric" required>
+          <input type="text" id="input-name" placeholder="Student name" required>
+          <button type="submit" class="btn btn-chalk">+ Add</button>
+        </form>
+      </div>
+
+      <div class="table-wrap">
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th>Roll</th>
+              <th>Name</th>
+              <th>Lectures (1&ndash;8)</th>
+              <th>Present / Total</th>
+              <th>Attendance</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ledger-body">
+            <!-- rows injected by script.js -->
+          </tbody>
+        </table>
+        <p class="empty-state" id="empty-state">The register is empty. Add your first student above.</p>
+      </div>
+
+      <div class="ledger-actions">
+        <label for="attendance-date">Marking attendance for</label>
+        <input type="date" id="attendance-date">
+        <button id="reset-today" class="btn btn-ghost">Reset all lectures for this date</button>
+      </div>
+
+      <div class="cancel-row">
+        <span class="cancel-label">Cancel a lecture for this date:</span>
+        <div class="cancel-chips" id="cancel-chips"><!-- injected by script.js --></div>
+      </div>
+    </section>
+
+    <!-- Right column: defaulters + chart -->
+    <aside class="side-col">
+      <section class="panel defaulters-panel">
+        <h2>Below 75% &mdash; needs attention</h2>
+        <ul class="defaulters-list" id="defaulters-list">
+          <li class="empty-state">No defaulters yet.</li>
+        </ul>
+      </section>
+
+      <section class="panel chart-panel">
+        <h2>Attendance by student</h2>
+        <canvas id="chart-canvas" width="360" height="220"></canvas>
+      </section>
+    </aside>
+
+  </div>
+</main>
+
+<footer class="board-footer">
+  <p>Data is stored locally in this browser (localStorage) &mdash; no server required.</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
