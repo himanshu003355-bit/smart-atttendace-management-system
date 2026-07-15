@@ -217,7 +217,7 @@ function renderLedger() {
             <span class="pct-text">${pct.toFixed(0)}%</span>
           </div>
         </td>
-        <td><button class="row-delete" title="Remove student" data-roll="${student.roll}">&times;</button></td>
+        <td><button class="row-delete" title="Remove student" data-roll="${student.roll}" data-name="${escapeHtml(student.name)}">&times;</button></td>
       `;
       body.appendChild(tr);
     });
@@ -327,7 +327,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const delBtn = e.target.closest('.row-delete');
     if (delBtn) {
-      deleteStudent(delBtn.dataset.roll);
+      const roll = delBtn.dataset.roll;
+      const name = delBtn.dataset.name || 'this student';
+      const confirmed = confirm(`Remove ${name} (Roll ${roll})? This will permanently delete their entire attendance history. This cannot be undone.`);
+      if (confirmed) {
+        deleteStudent(roll);
+      }
     }
   });
 
